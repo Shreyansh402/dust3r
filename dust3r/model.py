@@ -15,7 +15,7 @@ from .heads import head_factory
 from dust3r.patch_embed import get_patch_embed
 
 import dust3r.utils.path_to_croco  # noqa: F401
-from models.croco import CroCoNet  # noqa
+from croco.models.croco import CroCoNet  # noqa
 
 inf = float('inf')
 
@@ -192,9 +192,12 @@ class AsymmetricCroCo3DStereo (
     def forward(self, view1, view2):
         # encode the two images --> B,S,D
         (shape1, shape2), (feat1, feat2), (pos1, pos2) = self._encode_symmetrized(view1, view2)
-
+        '''shape1 = true_shape
+        feat1 = Tensor([B,S,D]), where B=batch_size, S=number of patches, D=embedding dimension
+        pos1 = Tensor([B,S,2]) where B=batch_size, S=number of patches, 2=position coordinates'''
         # combine all ref images into object-centric representation
         dec1, dec2 = self._decoder(feat1, pos1, feat2, pos2)
+        '''dec1 = Tuple of tensors, each of shape [B,S,D]'''
 
         with torch.cuda.amp.autocast(enabled=False):
             res1 = self._downstream_head(1, [tok.float() for tok in dec1], shape1)
