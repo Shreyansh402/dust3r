@@ -24,7 +24,7 @@ from dust3r.utils.image import load_images, rgb
 from dust3r.utils.device import to_numpy
 from dust3r.viz import add_scene_cam, CAM_COLORS, OPENGL, pts3d_to_trimesh, cat_meshes
 from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
-from dust3r.utils.output_json import outputJSON
+from dust3r.utils.output_json import outputJSON, storePly
 
 import matplotlib.pyplot as pl
 pl.ion()
