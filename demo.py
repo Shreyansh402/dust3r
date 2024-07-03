@@ -15,16 +15,19 @@ import tempfile
 import functools
 import trimesh
 import copy
+import cv2
 from scipy.spatial.transform import Rotation
+from PIL import Image
 
 from dust3r.inference import inference
 from dust3r.model import AsymmetricCroCo3DStereo
 from dust3r.image_pairs import make_pairs
 from dust3r.utils.image import load_images, rgb
+from dust3r.utils.geometry import inv
 from dust3r.utils.device import to_numpy
 from dust3r.viz import add_scene_cam, CAM_COLORS, OPENGL, pts3d_to_trimesh, cat_meshes
 from dust3r.cloud_opt import global_aligner, GlobalAlignerMode
-from dust3r.utils.output_json import outputJSON, storePly
+from dust3r.utils.output_json import outputJSON, storePly, get_pc
 
 import matplotlib.pyplot as pl
 pl.ion()
@@ -69,24 +72,28 @@ def _convert_scene_output_to_glb(outdir, imgs, pts3d, mask, focals, cams2world, 
 
     pts = np.concatenate([p[m] for p, m in zip(pts3d, mask)])
     col = np.concatenate([(255*p[m]).astype(np.uint8) for p, m in zip(imgs, mask)])
-    points3D_IDs=[]
-    xyss=[]
-    idx=0
-    for p, m in zip(pts3d, mask):
-      points3D_ID=[]
-      xys=[]
-      for i in range(len(m)):
-        for j in range(len(m[0])):
-          if(m[i][j]):
-              idx+=1
-              points3D_ID.append(idx)
-              xys.append([i,j])
-      xyss.append(xys)
-      points3D_IDs.append(points3D_ID)
-    
 
-    saveoutdir = os.path.join(dirname, 'outputs')
-    storePly(os.path.join(saveoutdir, 'points3D.ply'), pts, col)
+    # points3D_IDs=[]
+    # xyss=[]
+    # idx=0
+    # for p, m in zip(pts3d, mask):
+    #   points3D_ID=[]
+    #   xys=[]
+    #   for i in range(len(m)):
+    #     for j in range(len(m[0])):
+    #       if(m[i][j]):
+    #           idx+=1
+    #           points3D_ID.append(idx)
+    #           xys.append([i,j])
+    #   xyss.append(xys)
+    #   points3D_IDs.append(points3D_ID)
+
+    # pc=get_pc(imgs, pts3d, mask)
+    # vertices = pc.vertices
+    # colors = pc.colors
+
+    # saveoutdir = os.path.join(dirname, 'outputs/sparse/0')
+    # storePly(os.path.join(saveoutdir, 'points3D.ply'), pts, col)
     # full pointcloud
     if as_pointcloud:
         col = np.concatenate([p[m] for p, m in zip(imgs, mask)])
@@ -116,7 +123,7 @@ def _convert_scene_output_to_glb(outdir, imgs, pts3d, mask, focals, cams2world, 
     if not silent:
         print('(exporting 3D scene to', outfile, ')')
     scene.export(file_obj=outfile)
-    return outfile, xyss, points3D_IDs
+    return outfile
 
 
 def get_3D_model_from_scene(outdir, silent, scene, min_conf_thr=3, as_pointcloud=False, mask_sky=False,
@@ -170,26 +177,40 @@ def get_reconstructed_scene(outdir, model, device, silent, image_size, filelist,
     if mode == GlobalAlignerMode.PointCloudOptimizer:
         loss = scene.compute_global_alignment(init='mst', niter=niter, schedule=schedule, lr=lr)
 
-    outfile,xyss,points3D_IDs = get_3D_model_from_scene(outdir, silent, scene, min_conf_thr, as_pointcloud, mask_sky,
+    outfile = get_3D_model_from_scene(outdir, silent, scene, min_conf_thr, as_pointcloud, mask_sky,
                                       clean_depth, transparent_cams, cam_size)
 
     # also return rgb, depth and confidence imgs
     # depth is normalized with the max value for all images
     # we apply the jet colormap on the confidence maps
     rgbimg = scene.imgs
-    depths_unnorm = to_numpy(scene.get_depthmaps())
+    depth_maps = [i.detach() for i in scene.get_depthmaps()]
+    #depths_unnorm = to_numpy(scene.get_depthmaps())
     confs = to_numpy([c for c in scene.im_conf])
     cmap = pl.get_cmap('jet')
-    depths_max = max([d.max() for d in depths_unnorm])
-    depths = [d/depths_max for d in depths_unnorm]
+    depths_max = max([d.max() for d in depth_maps])
+    depths = [d/depths_max for d in depth_maps]
     confs_max = max([d.max() for d in confs])
     confs = [cmap(d/confs_max) for d in confs]
-    poses=scene.im_poses.abs().cpu().detach().numpy()
-    principal_points = scene.get_principal_points().cpu().detach().numpy()
-    focal_lengths = scene.get_focals().cpu().detach().numpy()
 
-    saveoutdir = os.path.join(dirname, 'outputs')
-    outputJSON(saveoutdir, poses, focal_lengths, principal_points, imgs, depths_unnorm, depths,xyss,points3D_IDs)
+    # saveoutdir = os.path.join(dirname, 'outputs/images')
+    # depthspath=os.path.join(dirname, 'outputs/depths')
+    # images=np.array(rgbimg)
+    # for i,(depth,image) in enumerate(zip(depth_maps,images)):
+    #         image_save_path = os.path.join(saveoutdir,"frame_{:04d}.png".format(i))
+    #         depth_save_path = os.path.join(depthspath,"frame_{:04d}.png".format(i))
+    #         rgb_image = cv2.cvtColor(image*255, cv2.COLOR_BGR2RGB)
+    #         cv2.imwrite(str(image_save_path), rgb_image)
+    #         depth_normalized = depth.cpu().numpy() / to_numpy(depths_max)
+    #         Image.fromarray((depth_normalized * 255).astype(np.uint8), mode='L').save(depth_save_path)
+
+    #poses=scene.im_poses.abs().detach().cpu().numpy()
+    # poses = inv(scene.get_im_poses().detach()).cpu().numpy()
+    # principal_points = scene.get_principal_points().detach().cpu().numpy()
+    # focal_lengths = scene.get_focals().detach().cpu().numpy()
+
+    # saveoutdir = os.path.join(dirname, 'outputs/sparse/0')
+    # outputJSON(saveoutdir, poses, focal_lengths, principal_points, imgs)
     
     imgs = []
     for i in range(len(rgbimg)):

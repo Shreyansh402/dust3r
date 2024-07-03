@@ -92,7 +92,7 @@ def load_images(folder_or_list, size, square_ok=False, verbose=True):
             continue
         img = exif_transpose(PIL.Image.open(os.path.join(root, path))).convert('RGB')
         W1, H1 = img.size
-        img_name = os.path.basename(path)
+        #img_name = os.path.basename(path)
         if size == 224:
             # resize short side to 224 (then crop)
             img = _resize_pil_image(img, round(size * max(W1/H1, H1/W1)))
@@ -114,7 +114,7 @@ def load_images(folder_or_list, size, square_ok=False, verbose=True):
         if verbose:
             print(f' - adding {path} with resolution {W1}x{H1} --> {W2}x{H2}')
         imgs.append(dict(img=ImgNorm(img)[None], true_shape=np.int32(
-            [img.size[::-1]]), idx=len(imgs), instance=str(len(imgs)), name=img_name))
+            [img.size[::-1]]), idx=len(imgs), instance=str(len(imgs))))
 
     assert imgs, 'no images foud at '+root
     if verbose:
